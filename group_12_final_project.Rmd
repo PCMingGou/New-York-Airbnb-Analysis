@@ -1,0 +1,577 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(tidyverse)
+library(ggcorrplot)
+library(dplyr)
+library(gridExtra)
+library(ggplot2)
+library(httr)
+library(broom)
+library(rgdal)
+```
+
+
+```{r}
+summarize_numeric = function(dataset) {
+  
+  dataset = select_if(dataset, is.numeric)
+  summary.table = data.frame(Attribute = names(dataset))
+  
+  summary.table = summary.table %>% 
+    mutate('Missing Values' = apply(dataset, 2, function (x) sum(is.na(x))),
+           'Unique Values' = apply(dataset, 2, function (x) length(unique(x))),
+           'Mean' = colMeans(dataset, na.rm = TRUE),
+           'Min' = apply(dataset, 2, function (x) min(x, na.rm = TRUE)),
+           'Max' = apply(dataset, 2, function (x) max(x, na.rm = TRUE)),
+           'SD' = apply(dataset, 2, function (x) sd(x, na.rm = TRUE))
+    )
+  summary.table
+}
+```
+
+```{r}
+summarize_character = function(dataset) {
+  
+  dataset = select_if(dataset, is.character)
+  summary.table = data.frame(Attribute = names(dataset))
+  
+  summary.table = summary.table %>% 
+    mutate('Missing Values' = apply(dataset, 2, function (x) sum(is.na(x))),
+           'Unique Values' = apply(dataset, 2, function (x) length(unique(x))),
+    )
+  summary.table
+}
+```
+
+```{r}
+summarize_factor = function(dataset) {
+  
+  dataset = select_if(dataset, is.factor)
+  summary.table = data.frame(Attribute = names(dataset))
+  
+  summary.table = summary.table %>% 
+    mutate('Missing Values' = apply(dataset, 2, function (x) sum(is.na(x))),
+           'Unique Values' = apply(dataset, 2, function (x) length(unique(x))),
+    )
+  summary.table
+}
+```
+
+```{r}
+List = read_csv('Listings.csv')
+```
+
+```{r}
+list_ny <- List%>%filter(city == 'New York')
+summarize_numeric(list_ny)
+summarize_character(list_ny)
+```
+#Drop variables
+*identifier:listing_id,name,host_id*
+*descriptive information:amenities*
+*repetitive location information:latitude,longitude,host_location*
+*all same value:city*
+```{r}
+ny = subset(list_ny,select = -c(listing_id,name,host_id,
+  amenities,host_location,city))
+ny <-na.omit(ny)
+ny$log_p = log(ny$price)
+summarize_numeric(ny)
+summarize_character(ny)
+```
+
+#convert character attributes to factor
+```{r}
+ny = ny%>%mutate(
+  host_response_time = as.factor(host_response_time),
+  neighbourhood = as.factor(neighbourhood),
+  district = as.factor(district),
+  room_type = as.factor(room_type),
+  host_response_time = as.factor(host_response_time),
+  host_is_superhost = as.factor(host_is_superhost),
+  host_has_profile_pic = as.factor(host_has_profile_pic),
+  host_identity_verified = as.factor(host_identity_verified),
+  instant_bookable = as.factor(instant_bookable),
+  property_type = as.factor(property_type)
+)
+```
+#summary
+```{r}
+colnames(ny %>% select_if(is.factor))
+colnames(ny %>% select_if(is.numeric))
+```
+#Univariate Analysis
+
+#logical grouping for factor attributes:
+*Host Factor:host_response_time, host_is_superhost, host_has_profile_pic, host_identity_verified*
+*House Factor: neighbourhood, distric, property_type, room_type, instant_bookable*
+
+#Univariate summary of factor:
+```{r}
+summarize_factor(ny%>%select(host_response_time,host_is_superhost,host_has_profile_pic,host_identity_verified))
+p1 = ggplot(ny) + geom_bar(aes(x = host_response_time))
+p2 = ggplot(ny) + geom_bar(aes(x = host_is_superhost))
+p3 = ggplot(ny) + geom_bar(aes(x = host_has_profile_pic))
+p4 = ggplot(ny) + geom_bar(aes(x = host_identity_verified))
+grid.arrange(p1,p2,p3,p4, nrow=2, top = "Host Factors")
+```
+```{r}
+summarize_factor(ny%>%select(neighbourhood,district,property_type,room_type,instant_bookable))
+p1 = ggplot(ny) + geom_bar(aes(x = neighbourhood))
+p2 = ggplot(ny) + geom_bar(aes(x = district))
+p3 = ggplot(ny) + geom_bar(aes(x = property_type,))
+p4 = ggplot(ny) + geom_bar(aes(x = room_type))
+p5 = ggplot(ny) + geom_bar(aes(x = instant_bookable))
+grid.arrange(p1,p2,p3,p4,p5, nrow=2, top = "House Factors")
+```
+
+#logical grouping for numeric attributes:
+*Host Measurement = host_response_rate, host_acceptance_rate, host_total_listings_count*
+*House Measurement = accommodates,bedrooms,price,min_nights,max_nights*
+*Review Meaurement = review_scores_rating,review_scores_accuracy,review_scores_cleanliness,review_scores_checkin,review_scores_communication,review_scores_location,review_scores_value*
+
+#Univariate summary of numeric attributes:
+```{r}
+summarize_numeric(ny%>%select(host_response_rate,host_acceptance_rate,host_total_listings_count))
+p1 = ggplot(ny) + geom_histogram(aes(x = host_response_rate),bins = 30)
+p2 = ggplot(ny) + geom_histogram(aes(x = host_acceptance_rate),bins = 30)
+p3 = ggplot(ny) + geom_histogram(aes(x = host_total_listings_count),bins = 30)
+grid.arrange(p1,p2,p3, nrow=1, top = "Host Measurement")
+```
+```{r}
+summarize_numeric(ny%>%select(accommodates,bedrooms,price,minimum_nights,maximum_nights))
+p1 = ggplot(ny) + geom_histogram(aes(x = accommodates),bins = 30)
+p2 = ggplot(ny) + geom_histogram(aes(x = bedrooms),bins = 30)
+p3 = ggplot(ny) + geom_histogram(aes(x = price),bins = 30)
+p4 = ggplot(ny) + geom_histogram(aes(x = minimum_nights),bins = 30)
+p5 = ggplot(ny) + geom_histogram(aes(x = maximum_nights),bins = 30)
+p6 = ggplot(ny) + geom_histogram(aes(x = log_p),bins = 30)
+grid.arrange(p1,p2,p3,p4,p5,p6, nrow=2, top = "House Measurement")
+```
+```{r}
+summarize_numeric(ny%>%select(review_scores_rating,review_scores_accuracy,review_scores_cleanliness,review_scores_checkin,review_scores_communication,review_scores_location,review_scores_value))
+p1 = ggplot(ny) + geom_histogram(aes(x = review_scores_rating),bins = 30)
+p2 = ggplot(ny) + geom_histogram(aes(x = review_scores_accuracy),bins = 30)
+p3 = ggplot(ny) + geom_histogram(aes(x = review_scores_cleanliness),bins = 30)
+p4 = ggplot(ny) + geom_histogram(aes(x = review_scores_checkin),bins = 30)
+p5 = ggplot(ny) + geom_histogram(aes(x = review_scores_communication),bins = 30)
+p6 = ggplot(ny) + geom_histogram(aes(x = review_scores_location),bins = 30)
+p7 = ggplot(ny) + geom_histogram(aes(x = review_scores_value),bins = 30)
+grid.arrange(p2,p3,p4,p5,p6,p7, nrow=3, top = "Review Measurement")
+```
+#Bivariate Anlysis
+
+#Measure vs Measure
+
+```{r}
+fullCorrMatrix = round(cor(ny %>% select_if(is.numeric)), 2)
+ggcorrplot(fullCorrMatrix)
+```
+#Categories vs Measures
+```{r}
+#categories against price
+g1 = ggplot(ny) + geom_boxplot(aes(x= host_response_time, y=log_p)) + theme(axis.title.y = element_blank())
+g2 = ggplot(ny) + geom_boxplot(aes(x= host_is_superhost, y=log_p)) + theme(axis.title.y = element_blank())
+g3 = ggplot(ny) + geom_boxplot(aes(x= host_has_profile_pic, y=log_p)) + theme(axis.title.y = element_blank())
+g4 = ggplot(ny) + geom_boxplot(aes(x= host_identity_verified, y=log_p)) + theme(axis.title.y = element_blank())
+g5 = ggplot(ny) + geom_boxplot(aes(x= neighbourhood, y=log_p)) + theme(axis.title.y = element_blank())
+g6 = ggplot(ny) + geom_boxplot(aes(x= district, y=log_p)) + theme(axis.title.y = element_blank())
+g7 = ggplot(ny) + geom_boxplot(aes(x= property_type, y=log_p)) + theme(axis.title.y = element_blank())
+g8 = ggplot(ny) + geom_boxplot(aes(x= room_type, y=log_p)) + theme(axis.title.y = element_blank())
+g9 = ggplot(ny) + geom_boxplot(aes(x= instant_bookable, y=log_p)) + theme(axis.title.y = element_blank())
+grid.arrange(g5,g7, nrow=1)
+```
+```{r}
+#categories vs review_scores_rating
+g1 = ggplot(ny) + geom_boxplot(aes(x= host_response_time, y=review_scores_rating)) + theme(axis.title.y = element_blank())
+g2 = ggplot(ny) + geom_boxplot(aes(x= host_is_superhost, y=review_scores_rating)) + theme(axis.title.y = element_blank())
+g3 = ggplot(ny) + geom_boxplot(aes(x= host_has_profile_pic, y=review_scores_rating)) + theme(axis.title.y = element_blank())
+g4 = ggplot(ny) + geom_boxplot(aes(x= host_identity_verified, y=review_scores_rating)) + theme(axis.title.y = element_blank())
+g5 = ggplot(ny) + geom_boxplot(aes(x= neighbourhood, y=review_scores_rating)) + theme(axis.title.y = element_blank())
+g6 = ggplot(ny) + geom_boxplot(aes(x= district, y=review_scores_rating)) + theme(axis.title.y = element_blank())
+g7 = ggplot(ny) + geom_boxplot(aes(x= property_type, y=review_scores_rating)) + theme(axis.title.y = element_blank())
+g8 = ggplot(ny) + geom_boxplot(aes(x= room_type, y=review_scores_rating)) + theme(axis.title.y = element_blank())
+g9 = ggplot(ny) + geom_boxplot(aes(x= instant_bookable, y=review_scores_rating)) + theme(axis.title.y = element_blank())
+grid.arrange(g1, g2, g3, g4, g5, g6, g7, g8,g9, nrow=3)
+```
+```{R}
+#district against measures
+g1 = ggplot(ny) + geom_boxplot(aes(x= district, y=accommodates))
+g2 = ggplot(ny) + geom_boxplot(aes(x= district, y=bedrooms)) 
+g3 = ggplot(ny) + geom_boxplot(aes(x= district, y=price)) 
+g4 = ggplot(ny) + geom_boxplot(aes(x= district, y=minimum_nights)) 
+g5 = ggplot(ny) + geom_boxplot(aes(x= district, y=maximum_nights)) 
+g6 = ggplot(ny) + geom_boxplot(aes(x= district, y=review_scores_rating))
+g7 = ggplot(ny) + geom_boxplot(aes(x= district, y=log_p))
+grid.arrange(g1,g2,g3,g4,g5,g6,g7,nrow = 3)
+```
+Main differences between districts are in accommodates, maximum_nights and log price. Housings on Staten Island have higher avaerage accommodate. Manhattan has more housing that are available for yearly rental.Housings' location has clearly influence on price. 
+##high correlated: Measure vs Measure: accommodates & bedrooms
+```{R}
+ggplot(ny) + geom_point(aes(x=bedrooms, y = accommodates),position='jitter')+ggtitle("accommodates & bedrooms") +theme(plot.title = element_text(hjust = 0.5))
+```
+Normally, accommodates should not be less than bedrooms.The data may has some mistakes or there are special situations.
+## Measure vs Category
+Since neighbourhood & property_type has too many classes, Remove the two variables.
+Only 16 host has no profile and picture.Remove host_has_profile_pic 
+```{R}
+#(1) host_response_rate by category
+g1 = ggplot(ny) + geom_boxplot(aes(x= host_response_time, y=host_response_rate)) + theme(axis.title.y = element_blank())
+g2 = ggplot(ny) + geom_boxplot(aes(x= host_is_superhost, y=host_response_rate)) + theme(axis.title.y = element_blank())
+g3 = ggplot(ny) + geom_boxplot(aes(x= host_identity_verified, y=host_response_rate)) + theme(axis.title.y = element_blank())
+g4 = ggplot(ny) + geom_boxplot(aes(x= district, y=host_response_rate)) + theme(axis.title.y = element_blank())
+g5 = ggplot(ny) + geom_boxplot(aes(x= room_type, y=host_response_rate)) + theme(axis.title.y = element_blank())
+g6 = ggplot(ny) + geom_boxplot(aes(x= instant_bookable, y=host_response_rate)) + theme(axis.title.y = element_blank())
+grid.arrange(g1, g2, g3, g4, g5, g6, nrow=3,top = "host_response_rate by Category")
+```
+graph 1: Instant responses have higher response rate,which makes sense.
+graph 2: "Superhosts" are outstanding landlords in Airbnb. They'll have badges on their house listings. And their response rate is high, which makes sense.
+
+```{R}
+#(2) host_acceptance_rate by category
+g1 = ggplot(ny) + geom_boxplot(aes(x= host_response_time, y=host_acceptance_rate)) + theme(axis.title.y = element_blank())
+g2 = ggplot(ny) + geom_boxplot(aes(x= host_is_superhost, y=host_acceptance_rate)) + theme(axis.title.y = element_blank())
+g3 = ggplot(ny) + geom_boxplot(aes(x= host_identity_verified, y=host_acceptance_rate)) + theme(axis.title.y = element_blank())
+g4 = ggplot(ny) + geom_boxplot(aes(x= district, y=host_acceptance_rate)) + theme(axis.title.y = element_blank())
+g5 = ggplot(ny) + geom_boxplot(aes(x= room_type, y=host_acceptance_rate)) + theme(axis.title.y = element_blank())
+g6 = ggplot(ny) + geom_boxplot(aes(x= instant_bookable, y=host_acceptance_rate)) + theme(axis.title.y = element_blank())
+grid.arrange(g1, g2, g3, g4, g5, g6, nrow=3,top = "host_acceptance_rate by Category")
+```
+graph 1: Instant responses have higher host acceptance rate,which means hosts are eager to rent out.
+graph 2: "Superhosts" deserves its honor.
+instant_book: allow you to book immediately without needing to send a request to the Host for approval.
+graph 6: An obvious result for the concept "instant book".
+```{R}
+#(3) host_total_listings_count by category
+g1 = ggplot(ny) + geom_boxplot(aes(x= host_response_time, y=host_total_listings_count)) + theme(axis.title.y = element_blank())
+g2 = ggplot(ny) + geom_boxplot(aes(x= host_is_superhost, y=host_total_listings_count)) + theme(axis.title.y = element_blank())
+g3 = ggplot(ny) + geom_boxplot(aes(x= host_identity_verified, y=host_total_listings_count)) + theme(axis.title.y = element_blank())
+g4 = ggplot(ny) + geom_boxplot(aes(x= district, y=host_total_listings_count)) + theme(axis.title.y = element_blank())
+g5 = ggplot(ny) + geom_boxplot(aes(x= room_type, y=host_total_listings_count)) + theme(axis.title.y = element_blank())
+g6 = ggplot(ny) + geom_boxplot(aes(x= instant_bookable, y=host_total_listings_count)) + theme(axis.title.y = element_blank())
+grid.arrange(g1, g2, g3, g4, g5, g6, nrow=3,top = "host_total_listings_count by Category")
+```
+"Number of house listings<=4" is about 76 percent. No obvious result here. There are several outliers.The number of houses owned by these hosts is amazing.
+Skip "latitude" & "longitude"
+```{R}
+#(4) accommodates by category
+g1 = ggplot(ny) + geom_boxplot(aes(x= host_response_time, y=accommodates)) + theme(axis.title.y = element_blank())
+g2 = ggplot(ny) + geom_boxplot(aes(x= host_is_superhost, y=accommodates)) + theme(axis.title.y = element_blank())
+g3 = ggplot(ny) + geom_boxplot(aes(x= host_identity_verified, y=accommodates)) + theme(axis.title.y = element_blank())
+g4 = ggplot(ny) + geom_boxplot(aes(x= district, y=accommodates)) + theme(axis.title.y = element_blank())
+g5 = ggplot(ny) + geom_boxplot(aes(x= room_type, y=accommodates)) + theme(axis.title.y = element_blank())
+g6 = ggplot(ny) + geom_boxplot(aes(x= instant_bookable, y=accommodates)) + theme(axis.title.y = element_blank())
+grid.arrange(g1, g2, g3, g4, g5, g6, nrow=3,top = "accommodates by Category")
+```
+accommodates: The capacity of renters
+graph 4: The proportion of group rental houses is higher in Staten Island.
+graph 5: "Entire place" obviously has higher capacity. 
+
+In "Measure vs Measure".accommodates and bedrooms are highly correlated. Skip
+"price" & "review_scores_rating" are important variables.Already done before. Skip
+```{R}
+#(5) minimum_nights by category
+g1 = ggplot(ny) + geom_boxplot(aes(x= host_response_time, y=minimum_nights)) + theme(axis.title.y = element_blank())
+g2 = ggplot(ny) + geom_boxplot(aes(x= host_is_superhost, y=minimum_nights)) + theme(axis.title.y = element_blank())
+g3 = ggplot(ny) + geom_boxplot(aes(x= host_identity_verified, y=minimum_nights)) + theme(axis.title.y = element_blank())
+g4 = ggplot(ny) + geom_boxplot(aes(x= district, y=minimum_nights)) + theme(axis.title.y = element_blank())
+g5 = ggplot(ny) + geom_boxplot(aes(x= room_type, y=minimum_nights)) + theme(axis.title.y = element_blank())
+g6 = ggplot(ny) + geom_boxplot(aes(x= instant_bookable, y=minimum_nights)) + theme(axis.title.y = element_blank())
+grid.arrange(g1, g2, g3, g4, g5, g6, nrow=3,top = "minimum_nights by Category")
+```
+No obvious result here.
+```{R}
+#(5) maximum_nights by category
+g1 = ggplot(ny) + geom_boxplot(aes(x= host_response_time, y=maximum_nights)) + theme(axis.title.y = element_blank())
+g2 = ggplot(ny) + geom_boxplot(aes(x= host_is_superhost, y=maximum_nights)) + theme(axis.title.y = element_blank())
+g3 = ggplot(ny) + geom_boxplot(aes(x= host_identity_verified, y=maximum_nights)) + theme(axis.title.y = element_blank())
+g4 = ggplot(ny) + geom_boxplot(aes(x= district, y=maximum_nights)) + theme(axis.title.y = element_blank())
+g5 = ggplot(ny) + geom_boxplot(aes(x= room_type, y=maximum_nights)) + theme(axis.title.y = element_blank())
+g6 = ggplot(ny) + geom_boxplot(aes(x= instant_bookable, y=maximum_nights)) + theme(axis.title.y = element_blank())
+grid.arrange(g1, g2, g3, g4, g5, g6, nrow=3,top = "maximum_nights by Category")
+```
+Graph 1: Lower response rates for long term rental houses. Host are not eager to rent out immediately.
+Graph 2: Most "superhosts" are the owners of short team rental houses.
+
+###Short Summary:
+host_response_rate is correlated with host_response_time/host_is_superhost.
+host_acceptance_rate is correlated with host_response_time/host_is_superhos/instant_bookable.
+
+## Category vs Category
+```{R}
+#(1) host_response_time by Category 
+g1 = ggplot(ny) + geom_bar(aes(x=host_response_time, fill = host_response_time), position = "fill") + labs(y = "Percent")
+g2 = ggplot(ny) + geom_bar(aes(x=host_is_superhost, fill = host_response_time), position = "fill") + labs(y = "Percent")
+g3 = ggplot(ny) + geom_bar(aes(x=host_identity_verified, fill = host_response_time), position = "fill") + labs(y = "Percent")
+g4 = ggplot(ny) + geom_bar(aes(x=district, fill = host_response_time), position = "fill") + labs(y = "Percent")
+g5 = ggplot(ny) + geom_bar(aes(x=room_type, fill = host_response_time), position = "fill") + labs(y = "Percent")
+g6 = ggplot(ny) + geom_bar(aes(x=instant_bookable, fill = host_response_time), position = "fill") + labs(y = "Percent")
+grid.arrange(g2, g3, g4, g5, g6, nrow=3, top = "host_response_time by Category")
+```
+Graph 1: host_response_time and host_is_superhost are correlated.
+Graph 2: host_response_time and host_has_profile_pic are correlated.
+Graph 3: Brooklyn and Manhattan has a higher host_response_time.
+Graph 5: host_response_time and instant_bookable are correlated.
+```{R}
+#(2) host_is_superhost by Category 
+g1 = ggplot(ny) + geom_bar(aes(x=host_response_time, fill = host_is_superhost), position = "fill") + labs(y = "Percent")
+g2 = ggplot(ny) + geom_bar(aes(x=host_is_superhost, fill = host_is_superhost), position = "fill") + labs(y = "Percent")
+g3 = ggplot(ny) + geom_bar(aes(x=host_identity_verified, fill = host_is_superhost), position = "fill") + labs(y = "Percent")
+g4 = ggplot(ny) + geom_bar(aes(x=district, fill = host_is_superhost), position = "fill") + labs(y = "Percent")
+g5 = ggplot(ny) + geom_bar(aes(x=room_type, fill = host_is_superhost), position = "fill") + labs(y = "Percent")
+g6 = ggplot(ny) + geom_bar(aes(x=instant_bookable, fill = host_is_superhost), position = "fill") + labs(y = "Percent")
+grid.arrange(g1, g3, g4, g5, g6, nrow=3, top = "host_is_superhost by Category")
+```
+Graph 1: host_response_time and host_is_superhost are correlated.
+
+```{R}
+#(3) host_identity_verified by Category 
+g1 = ggplot(ny) + geom_bar(aes(x=host_response_time, fill = host_identity_verified), position = "fill") + labs(y = "Percent")
+g2 = ggplot(ny) + geom_bar(aes(x=host_is_superhost, fill = host_identity_verified), position = "fill") + labs(y = "Percent")
+g3 = ggplot(ny) + geom_bar(aes(x=host_identity_verified, fill = host_identity_verified), position = "fill") + labs(y = "Percent")
+g4 = ggplot(ny) + geom_bar(aes(x=district, fill = host_identity_verified), position = "fill") + labs(y = "Percent")
+g5 = ggplot(ny) + geom_bar(aes(x=room_type, fill = host_identity_verified), position = "fill") + labs(y = "Percent")
+g6 = ggplot(ny) + geom_bar(aes(x=instant_bookable, fill = host_identity_verified), position = "fill") + labs(y = "Percent")
+grid.arrange(g1, g2, g4, g5, g6, nrow=3, top = "host_identity_verified by Category")
+```
+No obvious result here.
+```{R}
+#(4) host_identity_verified by Category 
+g1 = ggplot(ny) + geom_bar(aes(x=host_response_time, fill = district), position = "fill") + labs(y = "Percent")
+g2 = ggplot(ny) + geom_bar(aes(x=host_is_superhost, fill = district), position = "fill") + labs(y = "Percent")
+g3 = ggplot(ny) + geom_bar(aes(x=host_identity_verified, fill = district), position = "fill") + labs(y = "Percent")
+g4 = ggplot(ny) + geom_bar(aes(x=district, fill = district), position = "fill") + labs(y = "Percent")
+g5 = ggplot(ny) + geom_bar(aes(x=room_type, fill = district), position = "fill") + labs(y = "Percent")
+g6 = ggplot(ny) + geom_bar(aes(x=instant_bookable, fill = district), position = "fill") + labs(y = "Percent")
+grid.arrange(g1, g2, g3, g5, g6, nrow=3, top = "district by Category")
+```
+Graph 4:Hotel Rooms are mainly in Manhattan.
+```{R}
+#(5) room_type by Category 
+g1 = ggplot(ny) + geom_bar(aes(x=host_response_time, fill = room_type), position = "fill") + labs(y = "Percent")
+g2 = ggplot(ny) + geom_bar(aes(x=host_is_superhost, fill = room_type), position = "fill") + labs(y = "Percent")
+g3 = ggplot(ny) + geom_bar(aes(x=host_identity_verified, fill = room_type), position = "fill") + labs(y = "Percent")
+g4 = ggplot(ny) + geom_bar(aes(x=district, fill = room_type), position = "fill") + labs(y = "Percent")
+g5 = ggplot(ny) + geom_bar(aes(x=room_type, fill = room_type), position = "fill") + labs(y = "Percent")
+g6 = ggplot(ny) + geom_bar(aes(x=instant_bookable, fill = room_type), position = "fill") + labs(y = "Percent")
+grid.arrange(g1, g2, g3, g4, g6, nrow=3, top = "room_type by Category")
+```
+No obvious result here.
+```{R}
+#(6) instant_bookable by Category 
+g1 = ggplot(ny) + geom_bar(aes(x=host_response_time, fill = instant_bookable), position = "fill") + labs(y = "Percent")
+g2 = ggplot(ny) + geom_bar(aes(x=host_is_superhost, fill = instant_bookable), position = "fill") + labs(y = "Percent")
+g3 = ggplot(ny) + geom_bar(aes(x=host_identity_verified, fill = instant_bookable), position = "fill") + labs(y = "Percent")
+g4 = ggplot(ny) + geom_bar(aes(x=district, fill = instant_bookable), position = "fill") + labs(y = "Percent")
+g5 = ggplot(ny) + geom_bar(aes(x=room_type, fill = instant_bookable), position = "fill") + labs(y = "Percent")
+g6 = ggplot(ny) + geom_bar(aes(x=instant_bookable, fill = instant_bookable), position = "fill") + labs(y = "Percent")
+grid.arrange(g1, g2, g3, g4, g5, nrow=3, top = "instant_bookable by Category")
+```
+Graph 5:Hotel Rooms are mainly instant bookable.
+
+###Short Summary:
+host_response_time and host_is_superhost are correlated.
+host_response_time and host_has_profile_pic are correlated.
+host_response_time and instant_bookable are correlated.
+Remove "host_has_profile_pic", "neighbourhood","property_type","host_response_time","host_is_superhost","instant_bookable"
+
+
+Model variables
+1)Dependent variable
+  [1]  "price"
+2)Independent variables
+  Catagory
+  [1]  "host_identity_verified"
+  [2]  "district"
+  [3]  "room_type"             
+  Numeric
+  [1]  "host_response_rate"
+  [2]  "host_acceptance_rate" 
+  [3]  "host_total_listings_count"  
+  [4]  "accommodates" /"bedrooms"
+  [5]  "minimum_nights"             
+  [6]  "maximum_nights"
+  [7]  "review_scores_rating"
+
+```{r}
+r <- GET('http://data.beta.nyc//dataset/0ff93d2d-90ba-457c-9f7e-39e47bf2ac5f/resource/35dd04fb-81b3-479b-a074-a27a37888ce7/download/d085e2f8d0b54d4590b1e7d1f35594c1pediacitiesnycneighborhoods.geojson')
+?tidy
+nyc_neighborhoods <- readOGR(content(r,'text'), 'OGRGeoJSON', verbose = F)
+nyc_neighborhoods_df <- tidy(nyc_neighborhoods)
+newyorkmap<- ggplot() + geom_polygon(data=nyc_neighborhoods_df, aes(x=long, y=lat, group=group))
+airbnbny<- newyorkmap+geom_point(size = 0.5, aes(x=ny$longitude, y=ny$latitude,col = ny$neighbourhood))+ theme(legend.position = "none")
+print(airbnbny)
+```
+# Anaylitical Modeling
+```{python}
+# Price prediction using logistic regression
+# Price prediction using logistic regression
+
+from sklearn import preprocessing, metrics
+from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Lasso
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+sns.set(style="ticks", color_codes=True)
+import statsmodels.api as sm
+from scipy import stats
+
+dataset = pd.read_csv("ny.csv")
+dataset.dtypes
+
+dataset["price"].describe()
+dataset[dataset["price"]>1000]
+
+# Guassian Distribution
+hist_price2=dataset["price"][dataset["price"]<250].hist()
+#plt.show()
+
+dataset=dataset[dataset["price"]<250]
+dataset["price"].describe()
+
+# 221 Unique neighborhood in NYC
+dataset['neighbourhood'].value_counts()
+
+dfnh = dataset.groupby("neighbourhood").filter(lambda x: x['neighbourhood'].count() > 200)
+len(dfnh["neighbourhood"])
+
+dfnh = dataset.groupby("neighbourhood").filter(lambda x: x['neighbourhood'].count() == 1)
+len(dfnh["neighbourhood"])
+
+dataset["district"].value_counts()
+dt_price = dataset.groupby("district")["price"].mean()
+
+#cat_plot = sns.catplot(x="district",y="price",hue="room_type", kind="swarm", data=dataset)
+#plt.show()
+
+# Average price by room type
+dataset['room_type'].value_counts()
+price_by_rt = dataset.groupby("room_type")["price"].mean()
+price_by_rt
+
+# Analyze minimum stay nights
+dataset["minimum_nights"].describe()
+hist_mn=dataset["minimum_nights"][dataset["minimum_nights"]<10].hist()
+
+# Analyze review scores rating
+dataset["review_scores_rating"].describe()
+
+# Analyze host response time
+dataset["host_response_time"].describe()
+
+# Drop columns which are not useful in prediction
+dataset.drop(["latitude",'longitude'], axis=1, inplace=True)
+dataset.drop(['Unnamed: 0'], axis=1, inplace=True)
+
+dataset.isnull().sum()
+
+# Get features for price prediction
+feature_columns = ['price','host_identity_verified','district','room_type','bedrooms',
+'host_response_rate','host_acceptance_rate','host_total_listings_count','minimum_nights',
+'maximum_nights','review_scores_rating']
+
+selected_data = dataset[feature_columns]
+#selected_data.head()
+#selected_data.dtypes
+
+# Encoding categorical variables
+selected_data['host_identity_verified'] = selected_data['host_identity_verified'].factorize()[0]
+selected_data['district'] = selected_data['district'].factorize()[0]
+selected_data['room_type']=selected_data['room_type'].factorize()[0]
+#selected_data.head()
+
+# Splitting training and testing sets
+y = selected_data['price']
+x = selected_data.drop(['price'],axis=1)
+x_train,x_test,y_train,y_test=train_test_split(x,y,test_size=.1,random_state=105)
+
+# Modeling 
+
+## Linear Regression
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
+
+
+linreg = LinearRegression()
+linreg.fit(x_train,y_train)
+y_pred_LR = (linreg.predict(x_test))
+rmsedt1 = np.sqrt(metrics.mean_squared_error(y_test,y_pred_LR))
+linreg_score = linreg.score(x_train, y_train)
+
+print('R-squared train score: {:.3f}'.format(linreg.score(x_train, y_train)))
+print('R-squared test score: {:.3f}'.format(linreg.score(x_test, y_test)))
+print('R mean squared error: {:.3f}'.format(rmsedt1))
+
+## Lasso Regression
+from sklearn.linear_model import Lasso
+
+lasso = Lasso(alpha=10,max_iter = 10000)
+lasso.fit(x_train, y_train)
+y_pred_L = (lasso.predict(x_test))
+rmsedt2 = np.sqrt(metrics.mean_squared_error(y_test,y_pred_L))
+lasso_score = lasso.score(x_train, y_train)
+
+print('R-squared score (training): {:.3f}'.format(lasso.score(x_train, y_train)))
+print('R-squared score (test): {:.3f}'.format(lasso.score(x_test, y_test)))
+print('R mean squared error: {:.3f}'.format(rmsedt2))
+
+## Decision Tree
+from sklearn.tree import DecisionTreeRegressor
+DTree = DecisionTreeRegressor(min_samples_leaf=.0001)
+DTree.fit(x_train,y_train)
+y_pred_DT = (DTree.predict(x_test))
+rmsedt3 = np.sqrt(metrics.mean_squared_error(y_test,y_pred_DT))
+dt_score = DTree.score(x_train, y_train)
+
+print('R-squared score (training): {:.3f}'.format(DTree.score(x_train, y_train)))
+print('R-squared score (test): {:.3f}'.format(DTree.score(x_test, y_test)))
+print('R mean squared error: {:.3f}'.format(rmsedt3))
+
+## Random Forrest
+from sklearn.ensemble import RandomForestClassifier
+
+regressor = RandomForestClassifier()
+regressor.fit(x_train, y_train)
+y_pred_RF = (regressor.predict(x_test))
+rmsedt4 = np.sqrt(metrics.mean_squared_error(y_test,y_pred_RF))
+rf_score = regressor.score(x_train, y_train)
+
+print('R-squared score (training): {:.3f}'.format(regressor.score(x_train, y_train)))
+print('R-squared score (test): {:.3f}'.format(regressor.score(x_test, y_test)))
+print('R mean squared error: {:.3f}'.format(rmsedt4))
+
+# Comparing models
+rsqdt = {"Model":["LR","Lasso","DT","RFR"],"RSquared":[linreg_score,lasso_score,dt_score,rf_score]}
+rsqdt = pd.DataFrame(rsqdt)
+
+sns.catplot(x="Model", y="RSquared", linestyles=["--"], color ="green", kind="point", data=rsqdt);
+plt.show()
+plt.close()
+
+plt.barh(x.columns, DTree.feature_importances_)
+plt.show()
+plt.close()
+
+plt.barh(x.columns, regressor.feature_importances_)
+plt.show()
+plt.close()
+```
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
